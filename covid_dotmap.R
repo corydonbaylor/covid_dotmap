@@ -2,11 +2,13 @@ library(dplyr)
 library(tidyr)
 library(maps)
 library(ggplot2)
+library(plotly)
 library(patchwork)
 
 ### example code from https://taraskaduk.com/2017/11/26/pixel-maps/
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
-dmv = read.csv("github/covid_dotmap/dmv_covid.csv")%>%
+dmv = read.csv("dmv_covid.csv")%>%
   mutate(county_state = tolower(paste0(county, ", ", state)))%>%
   select(TotalCases, county_state)
 
@@ -48,7 +50,7 @@ dot_map = ggplot(data = dots) +
         size = TotalCases),
     alpha = .5
     ) + 
-  #coord_map()+
+  coord_map()+
   theme+
   scale_color_manual(values=c("#007a62", "#9999CC", "#7A0018"))
 
@@ -65,6 +67,16 @@ lat.histo <- ggplot(lats, aes(y = total, x = lat)) +
   theme_void() +
   coord_flip()
 
+lat.histo
+
+
+plot_ly(
+  data = lats,
+  x = ~lats,
+  y = ~total,
+  type = "bar"
+)
+
 longs = dots%>%
   group_by(long)%>%
   summarise(total = sum(TotalCases))  
@@ -73,6 +85,13 @@ long.histo <- ggplot(longs, aes(y = total, x = long)) +
   geom_col(fill = "#7A0018") +
   theme_void() +
   scale_y_reverse()
+long.histo
+
+dot_plot = ggplotly(dot_map)
+
+
+
+subplot()
 
 
 (dot_map + lat.histo) + long.histo + plot_layout(ncol = 2, nrow = 2)
