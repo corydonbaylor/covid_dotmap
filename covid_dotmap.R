@@ -4,13 +4,25 @@ library(maps)
 library(ggplot2)
 library(plotly)
 library(patchwork)
+library(lubridate)
+library(gganimate)
+library(gifski)
+
 
 ### example code from https://taraskaduk.com/2017/11/26/pixel-maps/
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
-dmv = read.csv("dmv_covid.csv")%>%
-  mutate(county_state = tolower(paste0(county, ", ", state)))%>%
-  select(TotalCases, county_state)
+dmv = read.csv("covid_confirmed_usafacts.csv")%>%
+  filter(State %in% c("VA", "DC", "MD"))
+
+
+dmv_ts = dmv%>%
+  mutate(county_state =  paste0(tolower(gsub(" County", "", County.Name)),", ", 
+                                tolower(state.name[match(State, state.abb)])))%>%
+  select(-State, -County.Name)%>%
+  gather(Date, Count, -county_state)%>%
+  mutate(Date = mdy(gsub("X", "", Date)))
+  
 
 # lets do one for DMV now
 lat <- data_frame(lat = seq(36, 40, by = .1))
@@ -27,7 +39,7 @@ dots = dots %>%
   mutate(county_state = gsub(":chincoteague", "",  county_state))%>%
   filter(state %in% c("district of columbia", "virginia", "maryland"))
 
-dots = left_join(dots, dmv, by = "county_state")
+dots2 = left_join(dots, dmv_ts, by = "county_state")
 
 missing = dots%>%
   filter(is.na(TotalCases))
@@ -39,22 +51,30 @@ theme <- theme_void() +
         plot.subtitle=element_text(colour="#3C3C3C",size=12),
         plot.caption = element_text(colour="#3C3C3C",size=10),  
         plot.margin = unit(c(0, 0, 0, 0), "cm"),
-        legend.position = "none")
+        legend.position = "none"
+        )
 
 
-dot_map = ggplot(data = dots) +   
+dot_map = ggplot(data = dots2) +   
   geom_point(
     aes(x=long, 
         y = lat, 
         color = state, 
-        size = TotalCases),
+        size = Count),
     alpha = .5
     ) + 
   coord_map()+
   theme+
-  scale_color_manual(values=c("#007a62", "#9999CC", "#7A0018"))
+  scale_color_manual(values=c("#007a62", "#9999CC", "#7A0018"))+
+  transition_states(
+    Date,
+    transition_length = 2,
+    state_length = 1
+  )
 
 dot_map
+
+animate(dot_map)
 
 # creating histograms
 
@@ -67,16 +87,6 @@ lat.histo <- ggplot(lats, aes(y = total, x = lat)) +
   theme_void() +
   coord_flip()
 
-lat.histo
-
-
-plot_ly(
-  data = lats,
-  x = ~lats,
-  y = ~total,
-  type = "bar"
-)
-
 longs = dots%>%
   group_by(long)%>%
   summarise(total = sum(TotalCases))  
@@ -85,16 +95,7 @@ long.histo <- ggplot(longs, aes(y = total, x = long)) +
   geom_col(fill = "#7A0018") +
   theme_void() +
   scale_y_reverse()
-long.histo
 
-dot_plot = ggplotly(dot_map)
-
-
-
-subplot()
-
-
-(dot_map + lat.histo) + long.histo + plot_layout(ncol = 2, nrow = 2)
 
 historatio <- max(lats$total)/max(longs$total)
 histowidth <- 0.5
