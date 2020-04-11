@@ -25,8 +25,8 @@ dmv_ts = dmv%>%
   
 
 # lets do one for DMV now
-lat <- data_frame(lat = seq(36, 40, by = .1))
-long <- data_frame(long = seq(-85, -74, by = .1))
+lat <- data.frame(lat = seq(36, 40, by = .06))
+long <- data.frame(long = seq(-85, -74, by = .06))
 
 dots = lat %>% 
   merge(long, all = TRUE)
@@ -44,15 +44,6 @@ dots2 = left_join(dots, dmv_ts, by = "county_state")
 missing = dots%>%
   filter(is.na(TotalCases))
   
-theme <- theme_void() +
-  theme(
-    
-        plot.title=element_text(face="bold", colour="#3C3C3C",size=16),
-        plot.subtitle=element_text(colour="#3C3C3C",size=12),
-        plot.caption = element_text(colour="#3C3C3C",size=10),  
-        plot.margin = unit(c(0, 0, 0, 0), "cm"),
-        legend.position = "none"
-        )
 
 
 dot_map = ggplot(data = dots2) +   
@@ -64,62 +55,46 @@ dot_map = ggplot(data = dots2) +
     alpha = .5
     ) + 
   coord_map()+
-  theme+
+  theme_void()+
+  theme(
+    
+    plot.title=element_text(
+                        face="bold", 
+                        colour="#3C3C3C",
+                        size=22,
+                        hjust = .2,
+                        vjust = -20
+                        ),
+    plot.subtitle=element_text(
+                              colour="#3C3C3C",
+                              size=13,
+                              hjust = .22,
+                              vjust = -28
+                              ),
+    plot.caption = element_text(colour="#3C3C3C",
+                                size=10),  
+    plot.margin = unit(c(0, 0, 0, 0), "cm"),
+    legend.position = "none"
+    
+  )+
   scale_color_manual(values=c("#007a62", "#9999CC", "#7A0018"))+
-  transition_states(
+  labs(
+   title = "COVID-19",
+   subtitle = "in DC, Maryland, and Virginia"
+  )+
+transition_states(
     Date,
     transition_length = 2,
     state_length = 1
   )
 
-dot_map
 
-animate(dot_map)
-
+animate(dot_map, 
+        nframes = 20, #more frames for make it smoother but longer to render
+        fps = 15, #how many frames are shown per second
+        height = 600,
+        width = 800
+)
 # creating histograms
 
-lats = dots%>%
-  group_by(lat)%>%
-  summarise(total = sum(TotalCases))
-
-lat.histo <- ggplot(lats, aes(y = total, x = lat)) +
-  geom_col(fill = "#7A0018") +
-  theme_void() +
-  coord_flip()
-
-longs = dots%>%
-  group_by(long)%>%
-  summarise(total = sum(TotalCases))  
-
-long.histo <- ggplot(longs, aes(y = total, x = long)) +
-  geom_col(fill = "#7A0018") +
-  theme_void() +
-  scale_y_reverse()
-
-
-historatio <- max(lats$total)/max(longs$total)
-histowidth <- 0.5
-
-coord <- coord_quickmap(xlim = range(dots$long), 
-                        ylim = range(dots$lat), expand = F)
-
-coord
-
-map.aspect <- coord$aspect(list(x.range = range(dots$long),
-                                y.range = range(dots$lat)))
-
-
-
-dot_map + lat.histo + long.histo + 
-  plot_layout(ncol = 2, 
-              nrow = 2, 
-              widths = c(1/map.aspect, histowidth/historatio),
-              heights = c(1,historatio*histowidth)
-              )
-
-
-outputfactor <- 10
-
-ggsave("dmv.png", units = "cm", 
-       height = outputfactor*(1 + histowidth), 
-       width = outputfactor*(1/map.aspect + histowidth/historatio))
+anim_save("covid19_dot_map.gif")
