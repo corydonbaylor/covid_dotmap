@@ -30,16 +30,28 @@ dmv_ts = dmv%>%
   mutate(county_state =  paste0(tolower(gsub(" County", "", County.Name)),", ",
                                 tolower(
                                   ifelse(
-                                    State == "DC", "district of columbia", 
+                                    State == "DC", "district of columbia", #dc isnt in state.abb
                                     state.name[match(State, state.abb)]
-                                  )
-                                  )
-                                )
+                                  ) # ifelse
+                                  )# to lower
+                                ) # paste0
          )%>%
   select(-State, -County.Name)%>%
   gather(Date, Count, -county_state)%>%
   mutate(Date = mdy(gsub("X", "", Date)))%>%
   filter(Date >= '2020-03-01')
+
+# there are a few edge case county names that need to be adjusted for
+dmv_ts = dmv_ts%>%
+  mutate(county_state = ifelse(
+    county_state %in% c("baltimore city, maryland", 
+                        "james city, virginia",
+                        "charles city, virginia"),
+    county_state,
+    gsub(" city", "", county_state)
+    ))%>%
+  mutate(county_state = gsub("\\.|'", "", county_state))%>%
+  
 
 
 # lets do one for DMV now
@@ -54,18 +66,21 @@ dots = dots %>%
   mutate(county = map.where('county', long, lat))%>%
   separate(county, c("state", "county"), sep = ",")%>%
   mutate(county_state = paste0(county, ", ", state))%>%
-  mutate(county_state = gsub(":chincoteague", "",  county_state))%>%
+  mutate(county_state = gsub(":chincoteague|:main", "",  county_state))%>%
   filter(state %in% c("district of columbia", "virginia", "maryland"))
+
+# creating a total row to join to
+#dots = rbind(dots, data.frame(lat = NA, long = NA, state = NA, county = NA, county_state = "total, NA"))
 
 dots = left_join(dots, dmv_ts, by = "county_state")
 
-missing = dots%>%
-  filter(is.na(Count))%>%
-  filter(!duplicated(county_state))
-  
+dots = dots%>%
+  group_by(Date)%>%
+  mutate(day_total = sum(Count))%>%
+  ungroup()
 
 
-dot_map = ggplot(data = dots2) +   
+dot_map = ggplot(data = dots) +   
   geom_point(
     aes(x=long, 
         y = lat, 
@@ -99,7 +114,9 @@ dot_map = ggplot(data = dots2) +
   scale_color_manual(values=c("#007a62", "#9999CC", "#7A0018"))+
   labs(
    title = "COVID-19",
-   subtitle = "in DC, Maryland, and Virginia"
+   subtitle = "{format(dots[dots$Date == closest_state,]$day_total[1], big.mark = ',')}"
+   
+   #caption = "{closest state}"
   )+
 transition_states(
     Date,
@@ -109,11 +126,11 @@ transition_states(
 
 
 animate(dot_map, 
-        nframes = 20, #more frames for make it smoother but longer to render
-        fps = 15, #how many frames are shown per second
+        nframes = 150, #more frames for make it smoother but longer to render
+        fps = 10, #how many frames are shown per second
         height = 600,
         width = 800
 )
 # creating histograms
-
+dots[dots$county_state == "total, NA",]$Count
 anim_save("covid19_dot_map.gif")
