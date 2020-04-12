@@ -12,22 +12,18 @@ library(gifski)
 ### example code from https://taraskaduk.com/2017/11/26/pixel-maps/
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
+
+# Creating COVID Time Series ----------------------------------------------
+
+
 # cleaning up data
 dmv = read.csv("covid_confirmed_usafacts.csv", stringsAsFactors = F)%>%
   filter(State %in% c("VA", "DC", "MD"))%>%
   select(-c(ï..countyFIPS, stateFIPS))
   
-# making sure everything is numeric
-dmv[,3:ncol(dmv)] = lapply(dmv[,3:ncol(dmv)], as.numeric)
-
-# creating rowsums
-dmv = rbind(dmv, c("total", "", colSums(dmv[,-c(1,2)])))
-# making sure everything is numeric
-dmv[,3:ncol(dmv)] = lapply(dmv[,3:ncol(dmv)], as.numeric)
-
 # creating a time series 
 dmv_ts = dmv%>%
-  mutate(county_state =  paste0(tolower(gsub(" County", "", County.Name)),", ",
+  mutate(county_state =  paste0(tolower(gsub(" County|\\.|'", "", County.Name)),", ",
                                 tolower(
                                   ifelse(
                                     State == "DC", "district of columbia", #dc isnt in state.abb
@@ -49,36 +45,53 @@ dmv_ts = dmv_ts%>%
                         "charles city, virginia"),
     county_state,
     gsub(" city", "", county_state)
-    ))%>%
-  mutate(county_state = gsub("\\.|'", "", county_state))%>%
+    ))
   
 
+# Creating Lat Long Dot Dataframe -----------------------------------------
 
-# lets do one for DMV now
+
+
+# DC, Maryland and Virginia sit between the 36th and 40th latitude
+# and -85 and -74 longitude
+
 lat <- data.frame(lat = seq(36, 40, by = .06))
 long <- data.frame(long = seq(-85, -74, by = .06))
 
+# create a lat long dataframe
 dots = lat %>% 
   merge(long, all = TRUE)
 
 # where we talking
 dots = dots %>% 
+  
+  # the map.where function returns the county given a lat long
+  
   mutate(county = map.where('county', long, lat))%>%
   separate(county, c("state", "county"), sep = ",")%>%
   mutate(county_state = paste0(county, ", ", state))%>%
   mutate(county_state = gsub(":chincoteague|:main", "",  county_state))%>%
   filter(state %in% c("district of columbia", "virginia", "maryland"))%>%
+  
+  # Next we need to join the time series to our dot matrix
+  
   left_join(dmv_ts, by = "county_state")%>%
   group_by(Date)%>%
   mutate(day_total = sum(Count))%>%
   ungroup()
 
-# now we must create a VA, MD and DC total
+# We want to create total for each region as a caption
+
 dots_final = dots%>%
   group_by(state, Date)%>%
   summarise(total = sum(Count))%>%
   spread(state, total)%>%
   right_join(dots, by = "Date")
+
+
+# Creating gganimate ------------------------------------------------------
+
+
 
 dot_map = ggplot(data = dots_final) +   
   geom_point(
@@ -102,12 +115,13 @@ dot_map = ggplot(data = dots_final) +
     plot.subtitle=element_text(
                               colour="#3C3C3C",
                               size=13,
-                              hjust = .22,
+                              hjust = .225,
                               vjust = -28
                               ),
     plot.caption = element_text(colour="#3C3C3C",
                                 size=13,
-                                hjust = 0),  
+                                hjust = 0.1,
+                                vjust = 5),  
     plot.margin = unit(c(0, 0, 0, 0), "cm"),
     legend.position = "none"
     
@@ -116,12 +130,10 @@ dot_map = ggplot(data = dots_final) +
   labs(
    title = "COVID-19",
    subtitle = "in DC, Maryland, and Virgina",
-   caption = "Date: {format(as.Date(closest_state), '%B %d')} | 
-   DC Cases: {format(dots_final[dots_final$Date == closest_state,]$`district of columbia`[1], big.mark = ',')} |
-  Maryland Cases: {format(dots_final[dots_final$Date == closest_state,]$maryland[1], big.mark = ',')} |
-  Virginia Cases: {format(dots_final[dots_final$Date == closest_state,]$virginia[1], big.mark = ',')} |
-  Total Cases: {format(dots_final[dots_final$Date == closest_state,]$day_total[1], big.mark = ',')}
-   "
+   
+   # Using glue we can find the relevant total
+   
+   caption = "Date: {format(as.Date(closest_state), '%B %d')} | DC Cases: {format(dots_final[dots_final$Date == closest_state,]$`district of columbia`[1], big.mark = ',')} | Maryland Cases: {format(dots_final[dots_final$Date == closest_state,]$maryland[1], big.mark = ',')} | Virginia Cases: {format(dots_final[dots_final$Date == closest_state,]$virginia[1], big.mark = ',')} | Total Cases: {format(dots_final[dots_final$Date == closest_state,]$day_total[1], big.mark = ',')}"
    
    #caption = "{closest state}"
   )+
@@ -135,7 +147,8 @@ transition_states(
 animate(dot_map, 
         nframes = 150, #more frames for make it smoother but longer to render
         fps = 10, #how many frames are shown per second
-        height = 600,
-        width = 800
+        height = 400,
+        width = 800,
+        end_pause = 30
 )
 anim_save("covid19_dot_map.gif")
