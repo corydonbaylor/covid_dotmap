@@ -12,17 +12,35 @@ library(gifski)
 ### example code from https://taraskaduk.com/2017/11/26/pixel-maps/
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
-dmv = read.csv("covid_confirmed_usafacts.csv")%>%
-  filter(State %in% c("VA", "DC", "MD"))
+# cleaning up data
+dmv = read.csv("covid_confirmed_usafacts.csv", stringsAsFactors = F)%>%
+  filter(State %in% c("VA", "DC", "MD"))%>%
+  select(-c(ï..countyFIPS, stateFIPS))
+  
+# making sure everything is numeric
+dmv[,3:ncol(dmv)] = lapply(dmv[,3:ncol(dmv)], as.numeric)
 
+# creating rowsums
+dmv = rbind(dmv, c("total", "", colSums(dmv[,-c(1,2)])))
+# making sure everything is numeric
+dmv[,3:ncol(dmv)] = lapply(dmv[,3:ncol(dmv)], as.numeric)
 
+# creating a time series 
 dmv_ts = dmv%>%
-  mutate(county_state =  paste0(tolower(gsub(" County", "", County.Name)),", ", 
-                                tolower(state.name[match(State, state.abb)])))%>%
+  mutate(county_state =  paste0(tolower(gsub(" County", "", County.Name)),", ",
+                                tolower(
+                                  ifelse(
+                                    State == "DC", "district of columbia", 
+                                    state.name[match(State, state.abb)]
+                                  )
+                                  )
+                                )
+         )%>%
   select(-State, -County.Name)%>%
   gather(Date, Count, -county_state)%>%
-  mutate(Date = mdy(gsub("X", "", Date)))
-  
+  mutate(Date = mdy(gsub("X", "", Date)))%>%
+  filter(Date >= '2020-03-01')
+
 
 # lets do one for DMV now
 lat <- data.frame(lat = seq(36, 40, by = .06))
@@ -39,10 +57,11 @@ dots = dots %>%
   mutate(county_state = gsub(":chincoteague", "",  county_state))%>%
   filter(state %in% c("district of columbia", "virginia", "maryland"))
 
-dots2 = left_join(dots, dmv_ts, by = "county_state")
+dots = left_join(dots, dmv_ts, by = "county_state")
 
 missing = dots%>%
-  filter(is.na(TotalCases))
+  filter(is.na(Count))%>%
+  filter(!duplicated(county_state))
   
 
 
