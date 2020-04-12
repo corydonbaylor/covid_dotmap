@@ -67,20 +67,20 @@ dots = dots %>%
   separate(county, c("state", "county"), sep = ",")%>%
   mutate(county_state = paste0(county, ", ", state))%>%
   mutate(county_state = gsub(":chincoteague|:main", "",  county_state))%>%
-  filter(state %in% c("district of columbia", "virginia", "maryland"))
-
-# creating a total row to join to
-#dots = rbind(dots, data.frame(lat = NA, long = NA, state = NA, county = NA, county_state = "total, NA"))
-
-dots = left_join(dots, dmv_ts, by = "county_state")
-
-dots = dots%>%
+  filter(state %in% c("district of columbia", "virginia", "maryland"))%>%
+  left_join(dmv_ts, by = "county_state")%>%
   group_by(Date)%>%
   mutate(day_total = sum(Count))%>%
   ungroup()
 
+# now we must create a VA, MD and DC total
+dots_final = dots%>%
+  group_by(state, Date)%>%
+  summarise(total = sum(Count))%>%
+  spread(state, total)%>%
+  right_join(dots, by = "Date")
 
-dot_map = ggplot(data = dots) +   
+dot_map = ggplot(data = dots_final) +   
   geom_point(
     aes(x=long, 
         y = lat, 
@@ -106,7 +106,8 @@ dot_map = ggplot(data = dots) +
                               vjust = -28
                               ),
     plot.caption = element_text(colour="#3C3C3C",
-                                size=10),  
+                                size=13,
+                                hjust = 0),  
     plot.margin = unit(c(0, 0, 0, 0), "cm"),
     legend.position = "none"
     
@@ -114,7 +115,13 @@ dot_map = ggplot(data = dots) +
   scale_color_manual(values=c("#007a62", "#9999CC", "#7A0018"))+
   labs(
    title = "COVID-19",
-   subtitle = "{format(dots[dots$Date == closest_state,]$day_total[1], big.mark = ',')}"
+   subtitle = "in DC, Maryland, and Virgina",
+   caption = "Date: {format(as.Date(closest_state), '%B %d')} | 
+   DC Cases: {format(dots_final[dots_final$Date == closest_state,]$`district of columbia`[1], big.mark = ',')} |
+  Maryland Cases: {format(dots_final[dots_final$Date == closest_state,]$maryland[1], big.mark = ',')} |
+  Virginia Cases: {format(dots_final[dots_final$Date == closest_state,]$virginia[1], big.mark = ',')} |
+  Total Cases: {format(dots_final[dots_final$Date == closest_state,]$day_total[1], big.mark = ',')}
+   "
    
    #caption = "{closest state}"
   )+
@@ -131,6 +138,4 @@ animate(dot_map,
         height = 600,
         width = 800
 )
-# creating histograms
-dots[dots$county_state == "total, NA",]$Count
 anim_save("covid19_dot_map.gif")
